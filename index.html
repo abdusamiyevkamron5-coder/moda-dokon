@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moda Do'koni</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#ffffff);
+  --text:var(--tg-theme-text-color,#111111);
+  --hint:var(--tg-theme-hint-color,#7a7a7a);
+  --card:var(--tg-theme-secondary-bg-color,#f1f1f5);
+  --btn:var(--tg-theme-button-color,#2481cc);
+  --btntext:var(--tg-theme-button-text-color,#ffffff);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:90px}
+header{padding:16px 16px 8px}
+header h1{font-size:22px}
+header p{color:var(--hint);font-size:14px;margin-top:2px}
+.cats{display:flex;gap:8px;overflow-x:auto;padding:8px 16px}
+.cat{flex:none;padding:8px 14px;border-radius:20px;background:var(--card);color:var(--text);border:none;font-size:14px}
+.cat.on{background:var(--btn);color:var(--btntext)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:8px 16px}
+.item{background:var(--card);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.pic{height:120px;display:flex;align-items:center;justify-content:center;font-size:52px;background:linear-gradient(135deg,#d9e4ff,#f3dcff)}
+.pic img{width:100%;height:100%;object-fit:cover}
+.info{padding:10px;display:flex;flex-direction:column;gap:4px;flex:1}
+.name{font-size:14px;font-weight:600}
+.price{font-size:14px;color:var(--hint)}
+.row{margin-top:auto;display:flex;align-items:center;justify-content:space-between;padding-top:6px}
+.add{width:100%;padding:8px;border:none;border-radius:10px;background:var(--btn);color:var(--btntext);font-size:14px}
+.qty{display:flex;align-items:center;gap:10px;width:100%;justify-content:space-between}
+.qty button{width:34px;height:34px;border:none;border-radius:10px;background:var(--btn);color:var(--btntext);font-size:18px}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:var(--bg);display:none}
+.bar button{width:100%;padding:14px;border:none;border-radius:12px;background:var(--btn);color:var(--btntext);font-size:16px;font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>Moda Do'koni</h1>
+  <p>Mahsulotni tanlang va buyurtma bering</p>
+</header>
+<div class="cats" id="cats"></div>
+<div class="grid" id="grid"></div>
+<div class="bar" id="bar"><button id="order"></button></div>
+
+<script>
+var tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+// ===== MAHSULOTLAR (o'zingiznikiga almashtiring) =====
+// img: rasm manzili (https://...). Bo'sh qoldirsangiz emoji ko'rinadi.
+var PRODUCTS = [
+  {id:1, cat:"Futbolkalar", name:"Oddiy futbolka", price:80000, emoji:"👕", img:""},
+  {id:2, cat:"Futbolkalar", name:"Oversize futbolka", price:120000, emoji:"👕", img:""},
+  {id:3, cat:"Shimlar", name:"Jinsi", price:250000, emoji:"👖", img:""},
+  {id:4, cat:"Shimlar", name:"Klassik shim", price:220000, emoji:"👖", img:""},
+  {id:5, cat:"Kurtkalar", name:"Bahorgi kurtka", price:400000, emoji:"🧥", img:""},
+  {id:6, cat:"Kurtkalar", name:"Qishki kurtka", price:650000, emoji:"🧥", img:""},
+  {id:7, cat:"Oyoq kiyim", name:"Krossovka", price:350000, emoji:"👟", img:""},
+  {id:8, cat:"Oyoq kiyim", name:"Botinka", price:450000, emoji:"🥾", img:""}
+];
+// =======================================================
+
+var cart = {};
+var current = "Hammasi";
+var cats = ["Hammasi"].concat(PRODUCTS.map(function(p){return p.cat;}).filter(function(c,i,a){return a.indexOf(c)===i;}));
+
+function fmt(n){ return n.toLocaleString("ru-RU") + " so'm"; }
+
+function renderCats(){
+  var el = document.getElementById("cats");
+  el.innerHTML = "";
+  cats.forEach(function(c){
+    var b = document.createElement("button");
+    b.className = "cat" + (c===current ? " on" : "");
+    b.textContent = c;
+    b.onclick = function(){ current = c; renderCats(); renderGrid(); };
+    el.appendChild(b);
+  });
+}
+
+function renderGrid(){
+  var el = document.getElementById("grid");
+  el.innerHTML = "";
+  PRODUCTS.filter(function(p){ return current==="Hammasi" || p.cat===current; }).forEach(function(p){
+    var d = document.createElement("div");
+    d.className = "item";
+    var pic = p.img ? '<img src="'+p.img+'" alt="">' : p.emoji;
+    var q = cart[p.id] || 0;
+    var ctrl = q === 0
+      ? '<button class="add" onclick="change('+p.id+',1)">Qo\'shish</button>'
+      : '<div class="qty"><button onclick="change('+p.id+',-1)">−</button><b>'+q+'</b><button onclick="change('+p.id+',1)">+</button></div>';
+    d.innerHTML = '<div class="pic">'+pic+'</div><div class="info"><div class="name">'+p.name+'</div><div class="price">'+fmt(p.price)+'</div><div class="row">'+ctrl+'</div></div>';
+    el.appendChild(d);
+  });
+  renderBar();
+}
+
+function change(id, d){
+  cart[id] = Math.max(0, (cart[id]||0) + d);
+  if (cart[id] === 0) delete cart[id];
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+  renderGrid();
+}
+
+function total(){
+  return PRODUCTS.reduce(function(s,p){ return s + (cart[p.id]||0)*p.price; }, 0);
+}
+
+function renderBar(){
+  var t = total();
+  var bar = document.getElementById("bar");
+  bar.style.display = t > 0 ? "block" : "none";
+  document.getElementById("order").textContent = "Buyurtma berish · " + fmt(t);
+}
+
+document.getElementById("order").onclick = function(){
+  var items = PRODUCTS.filter(function(p){ return cart[p.id]; })
+    .map(function(p){ return {name:p.name, qty:cart[p.id], price:p.price}; });
+  var data = JSON.stringify({items:items, total:total()});
+  if (tg && tg.sendData) { tg.sendData(data); }
+  else { alert("Bu sahifa Telegram ichida ochilganda buyurtma yuboriladi.\n\n" + data); }
+};
+
+renderCats();
+renderGrid();
+</script>
+</body>
+</html>
